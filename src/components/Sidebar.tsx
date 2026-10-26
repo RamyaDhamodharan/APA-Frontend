@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
-  LogOut,
   Mail,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,20 +22,20 @@ type Props = {
   documentCount: number;
   invoiceCount: number;
   emailAttentionCount: number;
-  name: string;
-  email: string;
+  name?: string;
+  email?: string;
   mobileOpen: boolean;
   onMobileClose: () => void;
   onNavigate: (page: WorkspacePage) => void;
-  onSignOut: () => void;
-  signOutDisabled: boolean;
+  onSignOut?: () => void;
+  signOutDisabled?: boolean;
 };
 
 const iconProps = { size: 18, strokeWidth: 1.75, "aria-hidden": true as const };
 
 export function Sidebar({
-  activePage, isAdmin, canAccessVendors, documentCount, invoiceCount, emailAttentionCount, name, email,
-  mobileOpen, onMobileClose, onNavigate, onSignOut, signOutDisabled,
+  activePage, isAdmin, canAccessVendors, documentCount, invoiceCount, emailAttentionCount,
+  mobileOpen, onMobileClose, onNavigate,
 }: Props) {
   const [userCollapsed, setUserCollapsed] = useState(() => {
     try { return window.localStorage.getItem("ap-sidebar-collapsed") === "true"; }
@@ -61,7 +60,6 @@ export function Sidebar({
 
   const items = [
     { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard {...iconProps}/> },
-    ...(isAdmin ? [{ id: "logs", label: "Logs", icon: <ScrollText {...iconProps}/> }] : []),
     { id: "documents", label: "Documents", icon: <FileText {...iconProps}/>, count: documentCount },
     { id: "invoices", label: "Invoices", icon: <Receipt {...iconProps}/>, count: invoiceCount },
     { id: "purchase-orders", label: "Purchase Orders", icon: <ClipboardList {...iconProps}/> },
@@ -69,6 +67,7 @@ export function Sidebar({
     ...(canAccessVendors ? [{ id: "vendors", label: "Vendors", icon: <Building2 {...iconProps}/> }] : []),
     { id: "email", label: "Email inbox", icon: <Mail {...iconProps}/>, count: emailAttentionCount },
     ...(isAdmin ? [{ id: "associates", label: "Associates", icon: <Users {...iconProps}/> }] : []),
+    ...(isAdmin ? [{ id: "logs", label: "Logs", icon: <ScrollText {...iconProps}/> }] : []),
   ] as const;
 
   return <aside className={`sidebar${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " sidebar-open" : ""}`}>
@@ -85,9 +84,5 @@ export function Sidebar({
         {"count" in item && item.count !== undefined && item.count > 0 && <b className="nav-count">{collapsed ? <span className="nav-count-dot" aria-label={`${item.count} items`}/> : item.count}</b>}
       </button>)}
     </nav>
-    <div className="sidebar-bottom">
-      <div className="profile"><span className="avatar" aria-hidden="true">{(email[0] || "U").toUpperCase()}</span><div className="sidebar-user-copy"><b>{name || email || "Workspace user"}</b><small>{email}</small></div></div>
-      <button type="button" className="signout" onClick={onSignOut} disabled={signOutDisabled} aria-label="Sign out" title={collapsed ? "Sign out" : undefined}><LogOut {...iconProps}/><span className="nav-label">Sign out</span></button>
-    </div>
   </aside>;
 }

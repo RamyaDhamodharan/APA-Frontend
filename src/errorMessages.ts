@@ -24,7 +24,15 @@ export function userFacingErrorMessage(error: unknown, fallback = "The request c
     case 404: return "This file or record could not be found. Refresh and try again.";
     case 413: return "This file is too large. Choose a smaller file and try again.";
     case 415: return "This file type is not supported. Choose a supported file and try again.";
-    case 422: return "Something went wrong with this file. Please retry or upload it again.";
+    case 422: {
+      const detail = response.data?.detail;
+      if (typeof detail === "string" && detail.trim()) return detail.trim();
+      if (Array.isArray(detail) && detail.length > 0) {
+        const first = detail[0] as { msg?: string };
+        if (typeof first?.msg === "string") return first.msg;
+      }
+      return "Unable to process the request. Check your entries and try again.";
+    }
     case 429: return "Too many requests. Wait a moment and try again.";
     case 409: {
       const detail = response.data?.detail;

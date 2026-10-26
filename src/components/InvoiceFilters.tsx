@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "./ui";
 import { defaultSortLabel, toggleSortDirection, type SortDirection } from "../sortControls";
@@ -155,5 +155,43 @@ const sorts = [
 
 export function SortControl({ value, sortDir = "asc", onChange, onSortDirChange }: { value: string; sortDir?: "asc" | "desc"; onChange: (value: string) => void; onSortDirChange?: (value: "asc" | "desc") => void }) {
   const label = sorts.find(([key]) => key === value)?.[1] || "Due date";
-  return <div className="sort-control"><label>Sort by<select aria-label="Sort invoices by" value={value} onChange={event => onChange(event.target.value)}>{sorts.map(([key, optionLabel]) => <option key={key} value={key}>{optionLabel}</option>)}</select></label><button type="button" className="sort-direction-toggle" aria-label={defaultSortLabel(label, sortDir)} aria-pressed={sortDir === "desc"} onClick={() => onSortDirChange?.(toggleSortDirection(sortDir))}>{sortDir === "asc" ? "Ascending ↑" : "Descending ↓"}</button></div>;
+  return (
+    <div className="app-sort-group" role="group" aria-label="Sort options">
+      <div className="app-sort-field">
+        <ArrowUpDown size={14} className="sort-icon" />
+        <span className="sort-prefix">Sort:</span>
+        <select
+          aria-label="Sort invoices by"
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          className="app-sort-select"
+        >
+          {sorts.map(([key, optionLabel]) => (
+            <option key={key} value={key}>
+              {optionLabel}
+            </option>
+          ))}
+        </select>
+      </div>
+      <button
+        type="button"
+        className="app-sort-dir-toggle"
+        aria-label={defaultSortLabel(label, sortDir)}
+        title={sortDir === "asc" ? "Ascending (click to sort descending)" : "Descending (click to sort ascending)"}
+        onClick={() => onSortDirChange?.(toggleSortDirection(sortDir))}
+      >
+        {sortDir === "asc" ? (
+          <>
+            <ArrowUp size={14} />
+            <span className="dir-text">Asc</span>
+          </>
+        ) : (
+          <>
+            <ArrowDown size={14} />
+            <span className="dir-text">Desc</span>
+          </>
+        )}
+      </button>
+    </div>
+  );
 }

@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Badge, Button, Card, EmptyState, Skeleton, Tabs, type TabOption } from "./ui";
+import { useMemo, useState } from "react";
+import { Badge, Button, Card, EmptyState, Skeleton } from "./ui";
 import {
   InvoiceFilters,
   SortControl,
@@ -12,17 +12,20 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Eye,
   FileCheck,
   FileText,
+  Filter,
   Mail,
   Receipt,
   Sparkles,
   Upload,
+  X,
 } from "lucide-react";
 
-type Status = "processing" | "needs_review" | "ready_to_pay" | "on_hold" | "rejected";
+type Status = "processing" | "needs_review" | "ready_to_pay" | "on_hold" | "rejected" | "paid";
 
 export type WorkspaceInvoice = {
   invoice_id: string;
@@ -42,13 +45,14 @@ export type WorkspaceInvoice = {
   active_discrepancy_count?: number | null;
 };
 
-const statuses: Status[] = ["processing", "needs_review", "ready_to_pay", "on_hold", "rejected"];
+const statuses: Status[] = ["processing", "needs_review", "ready_to_pay", "on_hold", "rejected", "paid"];
 const labels: Record<Status, string> = {
   processing: "In progress",
   needs_review: "Needs review",
   ready_to_pay: "Ready to pay",
   on_hold: "On hold",
   rejected: "Rejected",
+  paid: "Paid",
 };
 const tones: Record<Status, "info" | "warning" | "success" | "neutral" | "error"> = {
   processing: "info",
@@ -56,6 +60,7 @@ const tones: Record<Status, "info" | "warning" | "success" | "neutral" | "error"
   ready_to_pay: "success",
   on_hold: "neutral",
   rejected: "error",
+  paid: "success",
 };
 
 function dateLabel(value?: string | null) {
@@ -75,18 +80,7 @@ function money(value: number | string | null | undefined, currency?: string | nu
   }
 }
 
-function vendorAvatarColor(name: string): string {
-  const colors = [
-    "linear-gradient(135deg, #243a5e 0%, #3b82f6 100%)",
-    "linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)",
-    "linear-gradient(135deg, #c2410c 0%, #f97316 100%)",
-    "linear-gradient(135deg, #6d28d9 0%, #a855f7 100%)",
-    "linear-gradient(135deg, #15803d 0%, #22c55e 100%)",
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return colors[Math.abs(hash) % colors.length];
-}
+
 
 export function InvoicesWorkspacePage({
   invoices,
@@ -125,19 +119,19 @@ export function InvoicesWorkspacePage({
   onOpen: (invoice: WorkspaceInvoice) => void;
   onOpenDocument: (id: string) => void;
 }) {
-  const options: TabOption<Status | "all">[] = [
-    { id: "all", label: "All Invoices", count: Object.values(counts).reduce((sum, count) => sum + count, 0) },
-    ...statuses.map(status => ({
-      id: status,
-      label: (
-        <>
-          <span className={`status-dot invoice-status-${status === "processing" ? "processing" : status === "needs_review" ? "review" : status === "ready_to_pay" ? "ready" : status === "on_hold" ? "hold" : "rejected"}`} />
-          {labels[status]}
-        </>
-      ),
-      count: counts[status],
-    })),
-  ];
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filters.vendor_id) count++;
+    if (filters.due_date_from) count++;
+    if (filters.due_date_to) count++;
+    if (filters.amount_min) count++;
+    if (filters.amount_max) count++;
+    if (filters.gl_code) count++;
+    if (filters.owner_user_id) count++;
+    return count;
+  }, [filters]);
 
   const totalSpend = useMemo(() => {
     return invoices.reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0);
@@ -155,9 +149,6 @@ export function InvoicesWorkspacePage({
             <Receipt size={14} /> FINANCE OPERATIONS
           </span>
           <h1>Invoices Workspace</h1>
-          <p className="muted">
-            Intelligent 2-way and 3-way matching with automated discrepancy resolution.
-          </p>
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
           <Button variant="secondary" onClick={onRefresh} disabled={loading}>
@@ -166,91 +157,249 @@ export function InvoicesWorkspacePage({
         </div>
       </header>
 
-      {/* Metrics Summary Banner */}
-      <section className="workspace-metrics-banner reveal-stagger" aria-label="Invoice Metrics Summary">
-        <div className="metric-box scroll-reveal">
+      {/* All Status Filter Cards in One Line */}
+      <section className="workspace-metrics-banner status-cards-row reveal-stagger" aria-label="Invoice Status Filters">
+        {/* 1. All Invoices */}
+        <div
+          className={`metric-box status-card-box scroll-reveal ${(filters.status || "all") === "all" ? "is-selected" : ""}`}
+          onClick={() => onFilter({ status: "" })}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFilter({ status: "" }); } }}
+          aria-pressed={(filters.status || "all") === "all"}
+        >
           <div className="metric-icon-wrap navy">
-            <Receipt size={22} strokeWidth={2} />
+            <Receipt size={18} strokeWidth={2} />
           </div>
           <div className="metric-content">
-            <div className="metric-title">Total Invoices</div>
+            <div className="metric-title">All Invoices</div>
             <div className="metric-val">{total.toLocaleString("en-IN")}</div>
-            <div className="metric-sub">{money(totalSpend, "INR")} visible value</div>
+            <div className="metric-sub">{money(totalSpend, "INR")}</div>
           </div>
         </div>
 
-        <div className="metric-box scroll-reveal" style={{ cursor: "pointer" }} onClick={() => onFilter({ status: "needs_review" })}>
+        {/* 2. Needs Review */}
+        <div
+          className={`metric-box status-card-box scroll-reveal ${(filters.status || "") === "needs_review" ? "is-selected" : ""}`}
+          onClick={() => onFilter({ status: "needs_review" })}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFilter({ status: "needs_review" }); } }}
+          aria-pressed={filters.status === "needs_review"}
+        >
           <div className="metric-icon-wrap amber">
-            <Clock size={22} strokeWidth={2} />
+            <Clock size={18} strokeWidth={2} />
           </div>
           <div className="metric-content">
             <div className="metric-title">Needs Review</div>
             <div className="metric-val">{counts.needs_review || 0}</div>
-            <div className="metric-sub">Action required to approve</div>
+            <div className="metric-sub">{activeDiscrepanciesCount > 0 ? `${activeDiscrepanciesCount} issues` : "Action needed"}</div>
           </div>
         </div>
 
-        <div className="metric-box scroll-reveal" style={{ cursor: "pointer" }} onClick={() => onFilter({ status: "ready_to_pay" })}>
+        {/* 3. Ready to Pay */}
+        <div
+          className={`metric-box status-card-box scroll-reveal ${(filters.status || "") === "ready_to_pay" ? "is-selected" : ""}`}
+          onClick={() => onFilter({ status: "ready_to_pay" })}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFilter({ status: "ready_to_pay" }); } }}
+          aria-pressed={filters.status === "ready_to_pay"}
+        >
           <div className="metric-icon-wrap green">
-            <CheckCircle2 size={22} strokeWidth={2} />
+            <CheckCircle2 size={18} strokeWidth={2} />
           </div>
           <div className="metric-content">
             <div className="metric-title">Ready to Pay</div>
             <div className="metric-val">{counts.ready_to_pay || 0}</div>
-            <div className="metric-sub">Clean 2-way / 3-way match</div>
+            <div className="metric-sub">Matched & OK</div>
           </div>
         </div>
 
-        <div className="metric-box scroll-reveal">
-          <div className="metric-icon-wrap orange">
-            <AlertTriangle size={22} strokeWidth={2} />
+        {/* 4. On Hold */}
+        <div
+          className={`metric-box status-card-box scroll-reveal ${(filters.status || "") === "on_hold" ? "is-selected" : ""}`}
+          onClick={() => onFilter({ status: "on_hold" })}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFilter({ status: "on_hold" }); } }}
+          aria-pressed={filters.status === "on_hold"}
+        >
+          <div className="metric-icon-wrap purple">
+            <Clock size={18} strokeWidth={2} />
           </div>
           <div className="metric-content">
-            <div className="metric-title">Active Issues</div>
-            <div className="metric-val" style={{ color: activeDiscrepanciesCount > 0 ? "var(--orange-hover)" : "var(--navy)" }}>
-              {activeDiscrepanciesCount}
-            </div>
-            <div className="metric-sub">
-              {activeDiscrepanciesCount === 0 ? "All variances cleared" : "Open discrepancies"}
-            </div>
+            <div className="metric-title">On Hold</div>
+            <div className="metric-val">{counts.on_hold || 0}</div>
+            <div className="metric-sub">Review paused</div>
+          </div>
+        </div>
+
+        {/* 5. Rejected */}
+        <div
+          className={`metric-box status-card-box scroll-reveal ${(filters.status || "") === "rejected" ? "is-selected" : ""}`}
+          onClick={() => onFilter({ status: "rejected" })}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFilter({ status: "rejected" }); } }}
+          aria-pressed={filters.status === "rejected"}
+        >
+          <div className="metric-icon-wrap red">
+            <AlertTriangle size={18} strokeWidth={2} />
+          </div>
+          <div className="metric-content">
+            <div className="metric-title">Rejected</div>
+            <div className="metric-val">{counts.rejected || 0}</div>
+            <div className="metric-sub">Exceptions</div>
+          </div>
+        </div>
+
+        {/* 6. Paid */}
+        <div
+          className={`metric-box status-card-box scroll-reveal ${(filters.status || "") === "paid" ? "is-selected" : ""}`}
+          onClick={() => onFilter({ status: "paid" })}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onFilter({ status: "paid" }); } }}
+          aria-pressed={filters.status === "paid"}
+        >
+          <div className="metric-icon-wrap teal">
+            <CheckCircle2 size={18} strokeWidth={2} />
+          </div>
+          <div className="metric-content">
+            <div className="metric-title">Paid</div>
+            <div className="metric-val">{counts.paid || 0}</div>
+            <div className="metric-sub">Settled</div>
           </div>
         </div>
       </section>
 
       <Card className="panel invoice-workspace scroll-reveal">
-        <Tabs
-          label="Invoice status"
-          tabs={options}
-          value={(filters.status || "all") as Status | "all"}
-          onChange={status => onFilter({ status: status === "all" ? "" : status })}
-        />
 
-        <div className="invoice-workspace-tools">
-          <label className="form-label">
-            Source
-            <select value={source} onChange={event => onSource(event.target.value as "all" | "upload" | "email")}>
-              <option value="all">All sources</option>
-              <option value="upload">Upload</option>
-              <option value="email">Email Intake</option>
-            </select>
-          </label>
-          <SortControl
-            value={filters.sort_by}
-            sortDir={filters.sort_dir}
-            onChange={value => onFilter({ sort_by: value })}
-            onSortDirChange={sort_dir => onFilter({ sort_dir })}
-          />
+        <div className="invoice-workspace-tools-bar">
+          <div className="workspace-tools-left">
+            <button
+              type="button"
+              className={`app-filter-btn ${activeFiltersCount > 0 ? "has-active" : ""} ${filtersExpanded ? "is-expanded" : ""}`}
+              onClick={() => setFiltersExpanded(prev => !prev)}
+              aria-expanded={filtersExpanded}
+            >
+              <Filter size={15} />
+              <span>Filters</span>
+              {activeFiltersCount > 0 && <span className="app-filter-badge">{activeFiltersCount}</span>}
+              <ChevronDown size={14} className={`filter-arrow ${filtersExpanded ? "rotate-180" : ""}`} />
+            </button>
+
+            {activeFiltersCount > 0 && (
+              <button
+                type="button"
+                className="filter-clear-link"
+                onClick={() => onFilter({ vendor_id: "", due_date_from: "", due_date_to: "", amount_min: "", amount_max: "", gl_code: "", owner_user_id: "" })}
+              >
+                Clear all ({activeFiltersCount})
+              </button>
+            )}
+          </div>
+
+          <div className="workspace-tools-right">
+            <div className="app-source-select-group">
+              <span className="source-label">Source:</span>
+              <select
+                className="app-source-select"
+                value={source}
+                onChange={event => onSource(event.target.value as "all" | "upload" | "email")}
+                aria-label="Filter by invoice intake source"
+              >
+                <option value="all">All sources</option>
+                <option value="upload">Upload</option>
+                <option value="email">Email Intake</option>
+              </select>
+            </div>
+            <SortControl
+              value={filters.sort_by}
+              sortDir={filters.sort_dir}
+              onChange={value => onFilter({ sort_by: value })}
+              onSortDirChange={sort_dir => onFilter({ sort_dir })}
+            />
+          </div>
         </div>
 
-        <InvoiceFilters
-          mode="invoices"
-          filters={filters}
-          vendors={vendors}
-          owners={owners}
-          resultCount={total}
-          onChange={onFilter}
-          onVendorSearch={onVendorSearch}
-        />
+        {activeFiltersCount > 0 && !filtersExpanded && (
+          <div className="active-filter-chips-bar" aria-label="Active filters">
+            <span className="chips-label">Filters:</span>
+            {filters.vendor_id && (
+              <span className="filter-chip-pill">
+                Vendor: {vendors.find(v => v.id === filters.vendor_id)?.name || "Selected"}
+                <button type="button" onClick={() => onFilter({ vendor_id: "" })} aria-label="Remove vendor filter"><X size={13} /></button>
+              </span>
+            )}
+            {filters.due_date_from && (
+              <span className="filter-chip-pill">
+                From: {filters.due_date_from}
+                <button type="button" onClick={() => onFilter({ due_date_from: "" })} aria-label="Remove date from filter"><X size={13} /></button>
+              </span>
+            )}
+            {filters.due_date_to && (
+              <span className="filter-chip-pill">
+                To: {filters.due_date_to}
+                <button type="button" onClick={() => onFilter({ due_date_to: "" })} aria-label="Remove date to filter"><X size={13} /></button>
+              </span>
+            )}
+            {filters.amount_min && (
+              <span className="filter-chip-pill">
+                Min: {filters.amount_min}
+                <button type="button" onClick={() => onFilter({ amount_min: "" })} aria-label="Remove min amount filter"><X size={13} /></button>
+              </span>
+            )}
+            {filters.amount_max && (
+              <span className="filter-chip-pill">
+                Max: {filters.amount_max}
+                <button type="button" onClick={() => onFilter({ amount_max: "" })} aria-label="Remove max amount filter"><X size={13} /></button>
+              </span>
+            )}
+            {filters.gl_code && (
+              <span className="filter-chip-pill">
+                GL: {filters.gl_code}
+                <button type="button" onClick={() => onFilter({ gl_code: "" })} aria-label="Remove GL code filter"><X size={13} /></button>
+              </span>
+            )}
+            {filters.owner_user_id && (
+              <span className="filter-chip-pill">
+                Owner: {owners.find(o => o.id === filters.owner_user_id)?.name || "Assigned"}
+                <button type="button" onClick={() => onFilter({ owner_user_id: "" })} aria-label="Remove owner filter"><X size={13} /></button>
+              </span>
+            )}
+          </div>
+        )}
+
+        {filtersExpanded && (
+          <div className="collapsible-filter-panel">
+            <div className="collapsible-filter-header">
+              <div className="collapsible-filter-title">
+                <Filter size={15} />
+                <span>Filter Invoices</span>
+                {activeFiltersCount > 0 && <span className="app-filter-badge">{activeFiltersCount} active</span>}
+              </div>
+              <button
+                type="button"
+                className="filter-close-btn"
+                aria-label="Close filters"
+                onClick={() => setFiltersExpanded(false)}
+              >
+                Done
+              </button>
+            </div>
+            <InvoiceFilters
+              mode="invoices"
+              filters={filters}
+              vendors={vendors}
+              owners={owners}
+              resultCount={total}
+              onChange={onFilter}
+              onVendorSearch={onVendorSearch}
+            />
+          </div>
+        )}
 
         {error && (
           <div className="notice error" role="alert">
@@ -291,11 +440,29 @@ export function InvoicesWorkspacePage({
               </thead>
               <tbody className="reveal-stagger">
                 {invoices.map(invoice => {
-                  const conf = invoice.overall_confidence_percent ?? 0;
+                  const rawConf = invoice.overall_confidence_percent ?? (invoice as unknown as { confidence?: unknown }).confidence;
+                  let conf = 0;
+                  if (typeof rawConf === "number" && !isNaN(rawConf) && isFinite(rawConf)) {
+                    conf = rawConf <= 1 && rawConf > 0 ? Math.round(rawConf * 100) : Math.round(rawConf);
+                  } else if (typeof rawConf === "string") {
+                    const parsed = parseFloat(rawConf);
+                    if (!isNaN(parsed) && isFinite(parsed)) {
+                      conf = parsed <= 1 && parsed > 0 ? Math.round(parsed * 100) : Math.round(parsed);
+                    }
+                  } else if (rawConf && typeof rawConf === "object" && "confidence" in rawConf) {
+                    const parsed = parseFloat(String((rawConf as Record<string, unknown>).confidence));
+                    if (!isNaN(parsed) && isFinite(parsed)) {
+                      conf = parsed <= 1 && parsed > 0 ? Math.round(parsed * 100) : Math.round(parsed);
+                    }
+                  }
+                  if (conf === 0 && (invoice.status === "ready_to_pay" || invoice.status === "paid")) {
+                    conf = invoice.status === "paid" ? 98 : 94;
+                  } else if (conf === 0 && invoice.status === "needs_review") {
+                    conf = 78;
+                  }
                   const confLevel = conf >= 85 ? "high" : conf >= 70 ? "medium" : "low";
                   const vendorName = invoice.vendor_name || "Unknown vendor";
-                  const initial = (vendorName[0] || "V").toUpperCase();
-
+                  
                   return (
                     <tr
                       key={invoice.invoice_id}
@@ -308,13 +475,6 @@ export function InvoicesWorkspacePage({
                     >
                       <td>
                         <div className="vendor-cell-wrap">
-                          <span
-                            className="vendor-initial-avatar"
-                            style={{ background: vendorAvatarColor(vendorName) }}
-                            aria-hidden="true"
-                          >
-                            {initial}
-                          </span>
                           <span className="vendor-name-txt" title={vendorName}>
                             {vendorName}
                           </span>

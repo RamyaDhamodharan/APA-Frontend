@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { ChevronDown, Filter, X } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Skeleton } from "./ui";
 import type { FilterOwner, FilterVendor } from "./InvoiceFilters";
 
@@ -155,6 +156,23 @@ export function LogsPage({ coreUrl, authHeaders, vendors, owners, userNames, onO
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const selectedInvoiceId = selected ? rowInvoiceId(selected) : null;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const activeCount = useMemo(() => {
+    let count = 0;
+    if (query.date_from) count++;
+    if (query.date_to) count++;
+    if (query.user) count++;
+    if (query.action) count++;
+    if (query.result) count++;
+    if (query.entity_type) count++;
+    if (query.invoice) count++;
+    if (query.vendor_id) count++;
+    if (query.gl_code) count++;
+    if (query.owner) count++;
+    return count;
+  }, [query]);
+
   const userOptions = useMemo(() => {
     const merged = new Map<string, string>();
     owners.forEach(user => merged.set(user.id, user.name));
@@ -175,21 +193,145 @@ export function LogsPage({ coreUrl, authHeaders, vendors, owners, userNames, onO
   }
 
   return <div className="logs-page page-enter">
-    <header className="welcome"><div><span className="eyebrow">ADMINISTRATION</span><h1>Logs</h1><p className="muted">Review invoice, document, issue, and email activity.</p></div></header>
+    <header className="welcome"><div><span className="eyebrow">ADMINISTRATION</span><h1>Logs</h1></div></header>
     <Card className="logs-panel">
-      <form className="logs-filters" onSubmit={event => { event.preventDefault(); update({}); }} aria-label="Log filters">
-        <label className="form-label">From<input type="date" value={query.date_from} onChange={event => update({ date_from: event.target.value })}/></label>
-        <label className="form-label">To<input type="date" value={query.date_to} onChange={event => update({ date_to: event.target.value })}/></label>
-        <label className="form-label">User ID<select value={query.user} onChange={event => update({ user: event.target.value })}><option value="">All users</option>{userOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
-        <label className="form-label">Action<input value={query.action} onChange={event => update({ action: event.target.value })} placeholder="Any action"/></label>
-        <label className="form-label">Result<select value={query.result} onChange={event => update({ result: event.target.value })}><option value="">All results</option><option value="success">Success</option><option value="warning">Warning</option><option value="error">Error</option></select></label>
-        <label className="form-label">Entity<select value={query.entity_type} onChange={event => update({ entity_type: event.target.value })}><option value="">All entities</option><option value="invoice">Invoice</option><option value="document">Document</option><option value="issue">Issue</option><option value="email">Email activity</option><option value="email_draft">Email draft</option></select></label>
-        <label className="form-label">Invoice number or ID<input value={query.invoice} onChange={event => update({ invoice: event.target.value })} placeholder="Invoice number or UUID"/></label>
-        <label className="form-label">Vendor<select value={query.vendor_id} onChange={event => update({ vendor_id: event.target.value })}><option value="">All vendors</option>{vendors.map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
-        <label className="form-label">GL code<input value={query.gl_code} onChange={event => update({ gl_code: event.target.value })} placeholder="Any GL code"/></label>
-        <label className="form-label">Owner<select value={query.owner} onChange={event => update({ owner: event.target.value })}><option value="">All owners</option>{owners.map(owner => <option key={owner.id} value={owner.id}>{owner.name}</option>)}</select></label>
-        <div className="logs-filter-actions"><Button type="button" variant="secondary" onClick={() => update({ ...emptyQuery })}>Clear filters</Button><span aria-live="polite">{total.toLocaleString("en-IN")} records</span></div>
-      </form>
+      <div className="procurement-tools-bar">
+        <div className="procurement-tools-left">
+          <button
+            type="button"
+            className={`app-filter-btn ${activeCount > 0 ? "has-active" : ""} ${filtersOpen ? "is-expanded" : ""}`}
+            onClick={() => setFiltersOpen(o => !o)}
+            aria-expanded={filtersOpen}
+          >
+            <Filter size={15} />
+            <span>Filters</span>
+            {activeCount > 0 && <span className="app-filter-badge">{activeCount}</span>}
+            <ChevronDown size={14} className={`filter-arrow ${filtersOpen ? "rotate-180" : ""}`} />
+          </button>
+          {activeCount > 0 && (
+            <button
+              type="button"
+              className="filter-clear-link"
+              onClick={() => update({ ...emptyQuery })}
+            >
+              Clear all ({activeCount})
+            </button>
+          )}
+        </div>
+        <div className="procurement-tools-right">
+          <span className="filter-result-count">{total.toLocaleString("en-IN")} records</span>
+        </div>
+      </div>
+
+      {activeCount > 0 && !filtersOpen && (
+        <div className="active-filter-chips-bar" aria-label="Active filters">
+          <span className="chips-label">Filters:</span>
+          {query.date_from && (
+            <span className="filter-chip-pill">
+              From: {query.date_from}
+              <button type="button" onClick={() => update({ date_from: "" })} aria-label="Remove from date filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.date_to && (
+            <span className="filter-chip-pill">
+              To: {query.date_to}
+              <button type="button" onClick={() => update({ date_to: "" })} aria-label="Remove to date filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.user && (
+            <span className="filter-chip-pill">
+              User: {userOptions.find(([id]) => id === query.user)?.[1] || "Selected"}
+              <button type="button" onClick={() => update({ user: "" })} aria-label="Remove user filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.action && (
+            <span className="filter-chip-pill">
+              Action: {query.action}
+              <button type="button" onClick={() => update({ action: "" })} aria-label="Remove action filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.result && (
+            <span className="filter-chip-pill">
+              Result: {friendly(query.result)}
+              <button type="button" onClick={() => update({ result: "" })} aria-label="Remove result filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.entity_type && (
+            <span className="filter-chip-pill">
+              Entity: {friendly(query.entity_type)}
+              <button type="button" onClick={() => update({ entity_type: "" })} aria-label="Remove entity filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.invoice && (
+            <span className="filter-chip-pill">
+              Invoice: {query.invoice}
+              <button type="button" onClick={() => update({ invoice: "" })} aria-label="Remove invoice filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.vendor_id && (
+            <span className="filter-chip-pill">
+              Vendor: {vendors.find(v => v.id === query.vendor_id)?.name || "Selected"}
+              <button type="button" onClick={() => update({ vendor_id: "" })} aria-label="Remove vendor filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.gl_code && (
+            <span className="filter-chip-pill">
+              GL: {query.gl_code}
+              <button type="button" onClick={() => update({ gl_code: "" })} aria-label="Remove GL filter"><X size={13} /></button>
+            </span>
+          )}
+          {query.owner && (
+            <span className="filter-chip-pill">
+              Owner: {owners.find(o => o.id === query.owner)?.name || "Selected"}
+              <button type="button" onClick={() => update({ owner: "" })} aria-label="Remove owner filter"><X size={13} /></button>
+            </span>
+          )}
+        </div>
+      )}
+
+      {filtersOpen && (
+        <div className="collapsible-filter-panel">
+          <div className="collapsible-filter-header">
+            <div className="collapsible-filter-title">
+              <Filter size={15} />
+              <span>Filter Audit Logs</span>
+              {activeCount > 0 && <span className="app-filter-badge">{activeCount} active</span>}
+            </div>
+            <button
+              type="button"
+              className="filter-close-btn"
+              aria-label="Close filters"
+              onClick={() => setFiltersOpen(false)}
+            >
+              Done
+            </button>
+          </div>
+          <form className="collapsible-filter-grid" onSubmit={event => { event.preventDefault(); update({}); setFiltersOpen(false); }}>
+            <label className="form-label">From<input type="date" value={query.date_from} onChange={event => update({ date_from: event.target.value })}/></label>
+            <label className="form-label">To<input type="date" value={query.date_to} onChange={event => update({ date_to: event.target.value })}/></label>
+            <label className="form-label">User<select value={query.user} onChange={event => update({ user: event.target.value })}><option value="">All users</option>{userOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+            <label className="form-label">Action<input value={query.action} onChange={event => update({ action: event.target.value })} placeholder="Any action"/></label>
+            <label className="form-label">Result<select value={query.result} onChange={event => update({ result: event.target.value })}><option value="">All results</option><option value="success">Success</option><option value="warning">Warning</option><option value="error">Error</option></select></label>
+            <label className="form-label">Entity<select value={query.entity_type} onChange={event => update({ entity_type: event.target.value })}><option value="">All entities</option><option value="invoice">Invoice</option><option value="document">Document</option><option value="issue">Issue</option><option value="email">Email activity</option><option value="email_draft">Email draft</option></select></label>
+            <label className="form-label">Invoice number or ID<input value={query.invoice} onChange={event => update({ invoice: event.target.value })} placeholder="Invoice number or UUID"/></label>
+            <label className="form-label">Vendor<select value={query.vendor_id} onChange={event => update({ vendor_id: event.target.value })}><option value="">All vendors</option>{vendors.map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}</select></label>
+            <label className="form-label">GL code<input value={query.gl_code} onChange={event => update({ gl_code: event.target.value })} placeholder="Any GL code"/></label>
+            <label className="form-label">Owner<select value={query.owner} onChange={event => update({ owner: event.target.value })}><option value="">All owners</option>{owners.map(owner => <option key={owner.id} value={owner.id}>{owner.name}</option>)}</select></label>
+          </form>
+          <div className="collapsible-filter-footer">
+            <span className="filter-result-count">{total.toLocaleString("en-IN")} records</span>
+            {activeCount > 0 && (
+              <button
+                type="button"
+                className="filter-chips-reset-btn"
+                onClick={() => update({ ...emptyQuery })}
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {error && <div className="notice error" role="alert">{error}<Button variant="secondary" onClick={() => setQuery({ ...query })}>Try again</Button></div>}
       {loading ? <div className="logs-loading" role="status" aria-label="Loading logs">{Array.from({ length: 7 }, (_, index) => <div key={index}>{Array.from({ length: 7 }, (_, cell) => <Skeleton key={cell}/>)}</div>)}</div>
         : items.length === 0 ? <EmptyState title="No logs found" description="No activity matches these filters."/>
