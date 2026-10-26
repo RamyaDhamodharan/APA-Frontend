@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createAuthSession } from "../src/authSession.ts";
+import { createAuthSession } from "../src/features/auth/services/authSession.ts";
 
 test("session restoration obtains and keeps an access token in memory", async () => {
   const session = createAuthSession(async () => "restored-access-token");

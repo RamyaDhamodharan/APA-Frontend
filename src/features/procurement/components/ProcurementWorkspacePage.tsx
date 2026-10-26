@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { ArrowLeft, ArrowRight, ChevronDown, ClipboardList, Filter, PackageCheck, RefreshCw, Search, X } from "lucide-react";
-import { Button, Card, EmptyState } from "./ui";
-import { userFacingErrorMessage } from "../errorMessages";
-import { SourceFileActions } from "./SourceFileActions";
-import { VendorResolutionBanner } from "./VendorResolutionBanner";
-import type { UnknownVendorInfo } from "./UnknownVendorPrompt";
+import { Button, Card, EmptyState } from "../../../components/ui";
+import { userFacingErrorMessage } from "../../../utils/errorMessages";
+import { SourceFileActions } from "../../documents/components/SourceFileActions";
+import { VendorResolutionBanner } from "../../vendors/components/VendorResolutionBanner";
+import type { UnknownVendorInfo } from "../../vendors/components/UnknownVendorPrompt";
 
 type Line = {
   id: string;

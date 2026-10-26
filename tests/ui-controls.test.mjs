@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAccessLogs, canSeeAdminNavigation } from "../src/accessControls.ts";
-import { defaultSortLabel, toggleSortDirection } from "../src/sortControls.ts";
-import { isSupportedUploadFilename, uploadLimitMessage } from "../src/uploadLimits.ts";
+import { canAccessLogs, canSeeAdminNavigation } from "../src/features/auth/services/accessControls.ts";
+import { defaultSortLabel, toggleSortDirection } from "../src/utils/sortControls.ts";
+import { isSupportedUploadFilename, uploadLimitMessage } from "../src/features/documents/services/uploadLimits.ts";
 
 test("Logs navigation and access are admin-only", () => {
   assert.equal(canSeeAdminNavigation("admin"), true);

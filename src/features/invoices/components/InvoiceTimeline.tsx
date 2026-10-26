@@ -13,9 +13,9 @@ import {
   User,
   XCircle,
 } from "lucide-react";
-import { userFacingErrorMessage } from "../errorMessages";
-import { documentActionAvailability, isValidDocumentId } from "../documentIds";
-import { Badge, Button, EmptyState, Skeleton } from "./ui";
+import { userFacingErrorMessage } from "../../../utils/errorMessages";
+import { documentActionAvailability, isValidDocumentId } from "../../documents/services/documentIds";
+import { Badge, Button, EmptyState, Skeleton } from "../../../components/ui";
 
 export type InvoiceTimelineEntry = {
   id: string;

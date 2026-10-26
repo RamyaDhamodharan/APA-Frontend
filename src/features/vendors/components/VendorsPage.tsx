@@ -15,7 +15,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { userFacingErrorMessage } from "../errorMessages";
+import { userFacingErrorMessage } from "../../../utils/errorMessages";
 
 type Vendor = {
   id: string;

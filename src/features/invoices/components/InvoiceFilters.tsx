@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button } from "./ui";
-import { defaultSortLabel, toggleSortDirection, type SortDirection } from "../sortControls";
+import { Button } from "../../../components/ui";
+import { defaultSortLabel, toggleSortDirection, type SortDirection } from "../../../utils/sortControls";
 
 export type InvoiceQueryState = {
   status: string;

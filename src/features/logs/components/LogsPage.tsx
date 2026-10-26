@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { ChevronDown, Filter, X } from "lucide-react";
-import { Badge, Button, Card, EmptyState, Skeleton } from "./ui";
-import type { FilterOwner, FilterVendor } from "./InvoiceFilters";
+import { Badge, Button, Card, EmptyState, Skeleton } from "../../../components/ui";
+import type { FilterOwner, FilterVendor } from "../../invoices/components/InvoiceFilters";
 
 const PAGE_SIZE = 25;
 const urlKeys = ["date_from", "date_to", "user", "action", "result", "entity_type", "invoice", "vendor_id", "gl_code", "owner", "sort_dir", "page"] as const;

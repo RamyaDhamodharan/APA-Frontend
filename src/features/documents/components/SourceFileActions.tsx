@@ -1,5 +1,5 @@
 import { Download, Eye } from "lucide-react";
-import { sourceFileActionAvailability } from "../sourceFileActions";
+import { sourceFileActionAvailability } from "../services/sourceFileActions";
 
 export function SourceFileActions({ sourceDocumentId, onView, onDownload }: { sourceDocumentId?: string | null; coreUrl?: string; authHeaders?: () => { Authorization: string }; onView: (id: string) => void; onDownload: (id: string) => void }) {
   const { disabled, title } = sourceFileActionAvailability(sourceDocumentId);

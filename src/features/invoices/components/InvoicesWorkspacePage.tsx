@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Badge, Button, Card, EmptyState, Skeleton } from "./ui";
+import { Badge, Button, Card, EmptyState, Skeleton } from "../../../components/ui";
 import {
   InvoiceFilters,
   SortControl,
