@@ -5,3 +5,4 @@ export * from "./components/InvoiceReviewDrawer";
 export * from "./components/InvoicesWorkspacePage";
 export * from "./components/InvoiceFilters";
 export * from "./components/InvoiceTimeline";
+export * from "./queries/invoiceQueries";

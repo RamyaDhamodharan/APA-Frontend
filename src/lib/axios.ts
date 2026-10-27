@@ -1,5 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
-import { AUTH_URL, CORE_URL } from "../config/env";
+import { AUTH_URL } from "../config/env";
 import { createAuthSession } from "../features/auth/services/authSession";
 
 declare module "axios" {
@@ -22,13 +22,10 @@ export const authSession = createAuthSession(async () => {
 
 axios.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = authSession.getAccessToken();
-  if (
-    token &&
-    (config.url?.startsWith(CORE_URL) ||
-      (config.url?.startsWith(AUTH_URL) &&
-        !config.url?.includes("/api/auth/login") &&
-        !config.url?.includes("/api/auth/refresh")))
-  ) {
+  const url = config.url || "";
+  const isAuthPublic =
+    url.includes("/api/auth/login") || url.includes("/api/auth/refresh");
+  if (token && !isAuthPublic) {
     config.headers.set("Authorization", `Bearer ${token}`);
   }
   return config;

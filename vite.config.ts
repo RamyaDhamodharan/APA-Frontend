@@ -6,11 +6,19 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      "/admin/associates": {
+        target: "http://localhost:8001",
+        changeOrigin: true,
+      },
       "/api/auth": {
         target: "http://localhost:8001",
         changeOrigin: true,
       },
-      "/api/users": {
+      "/api/users/me": {
+        target: "http://localhost:8001",
+        changeOrigin: true,
+      },
+      "/api/users/temporary-password": {
         target: "http://localhost:8001",
         changeOrigin: true,
       },

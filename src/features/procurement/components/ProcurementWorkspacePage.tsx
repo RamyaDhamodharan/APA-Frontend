@@ -3,6 +3,10 @@ import axios from "axios";
 import { ArrowLeft, ArrowRight, ChevronDown, ClipboardList, Filter, PackageCheck, Plus, RefreshCw, Search, X } from "lucide-react";
 import { Button, Card, EmptyState } from "../../../components/ui";
 import { userFacingErrorMessage } from "../../../utils/errorMessages";
+import {
+  useCreateGoodsReceiptMutation,
+  useCreatePurchaseOrderMutation,
+} from "../queries/procurementQueries";
 import { SourceFileActions } from "../../documents/components/SourceFileActions";
 import { VendorResolutionBanner } from "../../vendors/components/VendorResolutionBanner";
 import type { UnknownVendorInfo } from "../../vendors/components/UnknownVendorPrompt";
@@ -155,6 +159,7 @@ export function ProcurementWorkspacePage({
   }>>([{ item_code: "", description: "", received_qty: "1", accepted_qty: "1", rejected_qty: "0" }]);
   const [addGrnBusy, setAddGrnBusy] = useState(false);
   const [addGrnError, setAddGrnError] = useState("");
+  const createGrnMutation = useCreateGoodsReceiptMutation({ authHeaders });
 
   async function handleCreateGrn() {
     if (!grnNumber.trim()) {
@@ -195,13 +200,11 @@ export function ProcurementWorkspacePage({
           po_line_id: l.po_line_id || undefined,
         })),
       };
-      const res = await axios.post<GR>(`${coreUrl}/api/goods-receipts`, payload, {
-        headers: authHeaders(),
-      });
+      const data = await createGrnMutation.mutateAsync(payload);
       setShowAddGrn(false);
       setRefreshKey(k => k + 1);
-      if (res.data) {
-        void open(res.data);
+      if (data) {
+        void open(data as GR);
       }
     } catch (err) {
       setAddGrnError(userFacingErrorMessage(err, "Failed to create goods receipt note."));

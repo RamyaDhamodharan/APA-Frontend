@@ -19,6 +19,13 @@ import { EmptyState, LoadingPanel } from "../../../components/common";
 import { dateTimeLabel, humanize } from "../../../utils/formatters";
 import type { EmailDraftItem, EmailMessageItem, EmailStatus } from "../types";
 import { emailOutcome, emailPollCount } from "../services/emailStatus";
+import {
+  useEmailDraftsQuery,
+  useCreateEmailDraftMutation,
+  useUpdateEmailDraftMutation,
+  useSendEmailDraftMutation,
+  useDiscardEmailDraftMutation,
+} from "../queries/emailQueries";
 import { VendorResolutionBanner } from "../../vendors/components/VendorResolutionBanner";
 import type { UnknownVendorInfo } from "../../vendors/components/UnknownVendorPrompt";
 import type { FilterVendor } from "../../invoices/components/InvoiceFilters";
@@ -81,15 +88,32 @@ export function EmailInboxWorkspace({
   onSelectVendor?: (id: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<"inbox" | "drafts">("inbox");
-  const [drafts, setDrafts] = useState<EmailDraftItem[]>([]);
-  const [draftsTotal, setDraftsTotal] = useState(0);
-  const [draftsLoading, setDraftsLoading] = useState(false);
   const [draftFilter, setDraftFilter] = useState("all");
   const [draftSearch, setDraftSearch] = useState("");
   const [draftPage, setDraftPage] = useState(1);
   const [selectedDraft, setSelectedDraft] = useState<EmailDraftItem | null>(null);
   const [sendingDraftId, setSendingDraftId] = useState<string | null>(null);
   const [discardingDraftId, setDiscardingDraftId] = useState<string | null>(null);
+
+  const {
+    data: draftsData,
+    isLoading: draftsLoading,
+    refetch: refetchDrafts,
+  } = useEmailDraftsQuery({
+    page: draftPage,
+    pageSize: 25,
+    status: draftFilter,
+    authHeaders,
+  });
+
+  const drafts = draftsData?.items || [];
+  const draftsTotal = draftsData?.total || 0;
+  const loadDrafts = useCallback(() => refetchDrafts(), [refetchDrafts]);
+
+  const createDraftMutation = useCreateEmailDraftMutation({ authHeaders });
+  const updateDraftMutation = useUpdateEmailDraftMutation({ authHeaders });
+  const sendDraftMutation = useSendEmailDraftMutation({ authHeaders });
+  const discardDraftMutation = useDiscardEmailDraftMutation({ authHeaders });
 
   const [showCompose, setShowCompose] = useState(false);
   const [composeTo, setComposeTo] = useState("");
@@ -98,33 +122,6 @@ export function EmailInboxWorkspace({
   const [composeBody, setComposeBody] = useState("");
   const [composeBusy, setComposeBusy] = useState(false);
   const [composeError, setComposeError] = useState("");
-
-  const loadDrafts = useCallback(async () => {
-    setDraftsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (draftFilter !== "all") {
-        params.set("status", draftFilter);
-      }
-      params.set("page", String(draftPage));
-      params.set("page_size", "25");
-
-      const response = await axios.get<{ items: EmailDraftItem[]; total: number }>(
-        `${coreUrl || ""}/api/email-drafts?${params.toString()}`,
-        { headers: authHeaders?.() || {} }
-      );
-      setDrafts(response.data.items || []);
-      setDraftsTotal(response.data.total || 0);
-    } catch (err: any) {
-      console.error("Failed to load email drafts", err);
-    } finally {
-      setDraftsLoading(false);
-    }
-  }, [coreUrl, authHeaders, draftFilter, draftPage]);
-
-  useEffect(() => {
-    void loadDrafts();
-  }, [loadDrafts]);
 
   function openFreshCompose() {
     setSelectedDraft(null);

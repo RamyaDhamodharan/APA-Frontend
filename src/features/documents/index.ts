@@ -8,3 +8,4 @@ export * from "./services/sourceFileActions";
 export * from "./components/DocumentExtractedDetails";
 export * from "./components/DocxExtractedPreview";
 export * from "./components/SourceFileActions";
+export * from "./queries/documentQueries";
