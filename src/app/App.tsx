@@ -71,6 +71,9 @@ import {
   linkedRecordDestination,
   sourceFilePreviewMime,
   sourceFileViewerMode,
+  useUploadDocumentMutation,
+  useRetryDocumentMutation,
+  useReprocessAllDocumentsMutation,
 } from "../features/documents";
 import {
   canAccessLogs,
@@ -95,6 +98,9 @@ import {
   type InvoiceDetail,
   type FilterOwner,
   type FilterVendor,
+  useInvoiceDecisionMutation,
+  useInvoiceMatchMutation,
+  useInvoiceMatchRejectMutation,
 } from "../features/invoices";
 import {
   ProcurementWorkspacePage,
@@ -222,6 +228,18 @@ export function App() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDraggingDocuments, setIsDraggingDocuments] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<Doc | null>(null);
+  const documentFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const triggerDocumentUpload = useCallback(() => {
+    navigateTo("documents");
+    if (documentFileInputRef.current) {
+      documentFileInputRef.current.click();
+    } else {
+      setTimeout(() => {
+        documentFileInputRef.current?.click();
+      }, 50);
+    }
+  }, [navigateTo]);
   const [unknownVendor, setUnknownVendor] = useState<UnknownVendorInfo | null>(null);
   const [unknownVendorBusy, setUnknownVendorBusy] = useState(false);
   const [unknownVendorError, setUnknownVendorError] = useState("");
@@ -297,6 +315,12 @@ export function App() {
     authSession.clear(); setToken(""); setProfile(null); setActivePage("dashboard"); setMustChangePassword(false); setProfileLoading(false); setDocuments([]); setSelectedDoc(null); setAssociateCredential(null);
   }, []);
   const authHeaders = useCallback(() => ({ Authorization: `Bearer ${authSession.getAccessToken()}` }), []);
+  const uploadDocumentMutation = useUploadDocumentMutation({ authHeaders });
+  const retryDocumentMutation = useRetryDocumentMutation({ authHeaders });
+  const reprocessAllMutation = useReprocessAllDocumentsMutation({ authHeaders });
+  const invoiceDecisionMutation = useInvoiceDecisionMutation({ authHeaders });
+  const invoiceMatchMutation = useInvoiceMatchMutation({ authHeaders });
+  const invoiceMatchRejectMutation = useInvoiceMatchRejectMutation({ authHeaders });
 
   useEffect(() => { setGlobalSearch(invoiceQuery.search); }, [invoiceQuery.search]);
 
@@ -617,12 +641,14 @@ export function App() {
       const file = valid[index];
       try {
         const body = new FormData(); body.append("file", file);
-        const response = await axios.post<Doc>(`${CORE_URL}/api/documents/upload`, body, {
-          headers: authHeaders(), onUploadProgress: progress => {
-            if (progress.total) setUploadProgress(Math.round(((index + progress.loaded / progress.total) / valid.length) * 100));
+        const result = await uploadDocumentMutation.mutateAsync({
+          formData: body,
+          onUploadProgress: (progress: any) => {
+            if (progress?.total) {
+              setUploadProgress(Math.round(((index + progress.loaded / progress.total) / valid.length) * 100));
+            }
           },
         });
-        const result = response.data;
         if (result.status === "duplicate_blocked") outcomes.push({ name: file.name, ok: false, message: "Already uploaded (duplicate)" });
         else if (result.status === "failed" || !isValidDocumentId(result.id)) {
           const message = "Something went wrong with this file. Please retry or upload it again.";
@@ -758,15 +784,18 @@ export function App() {
       const payload = decision.action === "approve"
         ? { comment: decision.reason || "Approved by reviewer" }
         : { reason: decision.reason, ...(decision.expectedMatchRunId ? { expected_match_run_id: decision.expectedMatchRunId } : {}), ...(decision.expectedUpdatedAt ? { expected_updated_at: decision.expectedUpdatedAt } : {}) };
-      await axios.post(endpoint, payload, { headers: authHeaders() });
+      await invoiceDecisionMutation.mutateAsync({ invoiceId: decision.invoiceId, action: decision.action, payload });
       notify("Invoice decision saved.", "success"); setDecision(null); setSelectedInvoice(null); await loadInvoices();
     } catch (error) { notify(getError(error, "Could not save the invoice decision."), "error"); }
   }
   async function confirmSuggestedMatch(candidate: MatchCandidate, accept: boolean) {
     if (!selectedInvoice) return;
     try {
-      if (accept) await axios.post(`${CORE_URL}/api/invoices/${selectedInvoice.invoice_id}/match`, { po_id: candidate.po_id }, { headers: authHeaders() });
-      else await axios.post(`${CORE_URL}/api/invoices/${selectedInvoice.invoice_id}/match/reject`, { po_id: candidate.po_id }, { headers: authHeaders() });
+      if (accept) {
+        await invoiceMatchMutation.mutateAsync({ invoiceId: selectedInvoice.invoice_id, poId: candidate.po_id });
+      } else {
+        await invoiceMatchRejectMutation.mutateAsync({ invoiceId: selectedInvoice.invoice_id, poId: candidate.po_id });
+      }
       await openInvoice(selectedInvoice.invoice_id); await loadInvoices();
     } catch (error) { notify(getError(error, "Could not update the suggested match."), "error"); }
   }
@@ -845,7 +874,7 @@ export function App() {
     try {
       setDetailLoading(true);
       const endpoint = doc.status === "received" ? "parse" : "retry";
-      await axios.post(`${CORE_URL}/api/documents/${doc.id}/${endpoint}`, {}, { headers: authHeaders() });
+      await retryDocumentMutation.mutateAsync({ docId: doc.id, endpoint });
       notify("Reprocessing has been requested. The status will update when the backend finishes.", "success");
       await loadDocuments(1);
     } catch (error) { notify(getError(error, "Could not retry document processing."), "error"); }
@@ -861,8 +890,7 @@ export function App() {
     let failed = 0;
     try {
       while (true) {
-        const response = await axios.post<{ scanned: number; completed: number; failed: number; remaining: number }>(`${CORE_URL}/api/documents/admin/reprocess-all`, {}, { headers: authHeaders() });
-        const batch = response.data;
+        const batch = await reprocessAllMutation.mutateAsync();
         done += batch.completed;
         failed += batch.failed;
         total = Math.max(total, done + batch.remaining);
@@ -1024,7 +1052,22 @@ export function App() {
       onSignOut={() => void logout()}
       signOutDisabled={authBusy}
     />
-    <main className="main-area"><header className="topbar">
+    <main className="main-area">
+      <input
+        ref={documentFileInputRef}
+        id="document-upload-input"
+        type="file"
+        multiple
+        accept=".pdf,.png,.jpg,.jpeg,.docx,.eml"
+        style={{ display: "none" }}
+        onChange={event => {
+          const files = Array.from(event.target.files || []);
+          if (files.length) void uploadFiles(files);
+          event.target.value = "";
+        }}
+        disabled={uploading}
+      />
+      <header className="topbar">
       <button className="topbar-nav-toggle" aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(value => !value)}><Menu {...iconProps}/></button>
       {activePage !== "dashboard" && (
         <button
@@ -1148,8 +1191,8 @@ export function App() {
           {associatesError && <div className="notice error">{associatesError}<button onClick={() => void loadAssociates()}>Try again</button></div>}
           {associatesLoading ? <LoadingPanel title="Loading associates" subtitle="Retrieving active accounts..."/> : associates.filter(item => item.is_active).length ? <div className="table-wrap scroll-reveal"><table className="associates-table"><thead><tr><th>Name</th><th>Email</th><th>Added</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead><tbody>{associates.filter(item => item.is_active).map(associate => <tr key={associate.id}><td><div className="associate-user-cell"><span className="associate-avatar">{(associate.name || "A").slice(0, 1).toUpperCase()}</span><strong>{associate.name}</strong></div></td><td><span className="associate-email-cell"><Mail size={13} /> {associate.email}</span></td><td>{dateLabel(associate.created_at)}</td><td className="associate-actions"><div className="table-action-group"><button className="secondary small-btn" onClick={() => void resetAssociatePassword(associate)} disabled={authBusy}>Reset password</button><button className="secondary small-btn danger-btn" onClick={() => void removeAssociate(associate)} disabled={authBusy}>Remove access</button></div></td></tr>)}</tbody></table></div> : <EmptyState title="No associates yet" description="Add an associate using the form above."/>}
         </section>
-      </> : activePage === "dashboard" ? <DashboardWorkspace invoices={invoices} counts={invoiceCounts} loading={invoiceLoading} error={invoiceError} search={globalSearch} emailStatus={emailStatus} onEmail={() => navigateTo("email")} onPollEmail={() => void pollEmailNow()} onOpen={invoice => void openInvoice(invoice.invoice_id)} onInvoices={() => navigateTo("invoices")} onDocuments={() => navigateTo("documents")} onRefresh={() => void loadInvoices()} /> : <>
-        <header className="welcome"><div><span className="eyebrow purple">FINANCE OPERATIONS</span><h1>Documents</h1></div><label className={`primary upload ${uploading ? "disabled" : ""}`}><span>＋</span> {uploading ? "Uploading…" : "Upload documents"}<input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.docx,.eml" onChange={event => { const files = Array.from(event.target.files || []); if (files.length) void uploadFiles(files); event.target.value = ""; }} disabled={uploading} hidden /></label></header>
+      </> : activePage === "dashboard" ? <DashboardWorkspace invoices={invoices} counts={invoiceCounts} loading={invoiceLoading} error={invoiceError} search={globalSearch} emailStatus={emailStatus} onEmail={() => navigateTo("email")} onPollEmail={() => void pollEmailNow()} onOpen={invoice => void openInvoice(invoice.invoice_id)} onInvoices={() => navigateTo("invoices")} onDocuments={triggerDocumentUpload} onRefresh={() => void loadInvoices()} /> : <>
+        <header className="welcome"><div><span className="eyebrow purple">FINANCE OPERATIONS</span><h1>Documents</h1></div><button type="button" className={`primary upload ${uploading ? "disabled" : ""}`} onClick={() => documentFileInputRef.current?.click()} disabled={uploading}><span>＋</span> {uploading ? "Uploading…" : "Upload documents"}</button></header>
         {uploading && <div className="compact-upload-progress panel">
           <div className="compact-upload-status"><DocumentLoader/><span>Uploading documents... {uploadProgress}%</span></div>
           <div className="progress-track"><span style={{ width: `${uploadProgress}%` }}/></div>

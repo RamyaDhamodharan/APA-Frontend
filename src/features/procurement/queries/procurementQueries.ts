@@ -20,6 +20,12 @@ export function useProcurementQuery({
   page = 1,
   pageSize = 20,
   search = "",
+  vendorFilter,
+  poFilter,
+  dateFrom,
+  dateTo,
+  sortBy,
+  sortDir,
   authHeaders,
   enabled = true,
 }: {
@@ -27,6 +33,12 @@ export function useProcurementQuery({
   page?: number;
   pageSize?: number;
   search?: string;
+  vendorFilter?: string;
+  poFilter?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
   authHeaders?: () => Record<string, string>;
   enabled?: boolean;
 }) {
@@ -34,13 +46,25 @@ export function useProcurementQuery({
     kind === "purchase_order" ? "/api/purchase-orders" : "/api/goods-receipts";
 
   return useQuery({
-    queryKey: ["procurement", kind, { page, pageSize, search }],
+    queryKey: [
+      "procurement",
+      kind,
+      { page, pageSize, search, vendorFilter, poFilter, dateFrom, dateTo, sortBy, sortDir },
+    ],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         page_size: String(pageSize),
       });
       if (search.trim()) params.set("search", search.trim());
+      if (vendorFilter) params.set("vendor_id", vendorFilter);
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+      if (sortBy) params.set("sort_by", sortBy);
+      if (sortDir) params.set("sort_dir", sortDir);
+      if (kind === "purchase_order") params.set("current_only", "false");
+      else if (poFilter) params.set("po_id", poFilter);
+
       const response = await axios.get<any>(`${endpoint}?${params.toString()}`, {
         headers: authHeaders?.() || {},
       });

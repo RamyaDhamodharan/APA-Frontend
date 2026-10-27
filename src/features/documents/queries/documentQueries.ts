@@ -80,15 +80,26 @@ export function useUploadDocumentMutation({
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (formData: FormData) => {
+    mutationFn: async (
+      payload:
+        | FormData
+        | { formData: FormData; onUploadProgress?: (progress: any) => void }
+    ) => {
+      const isCustom = payload instanceof FormData ? false : "formData" in payload;
+      const data = isCustom ? (payload as { formData: FormData }).formData : (payload as FormData);
+      const onUploadProgress = isCustom
+        ? (payload as { onUploadProgress?: (progress: any) => void }).onUploadProgress
+        : undefined;
+
       const response = await axios.post<Doc>(
         "/api/documents/upload",
-        formData,
+        data,
         {
           headers: {
             "Content-Type": "multipart/form-data",
             ...(authHeaders?.() || {}),
           },
+          onUploadProgress,
         }
       );
       return response.data;

@@ -6,6 +6,7 @@ import { userFacingErrorMessage } from "../../../utils/errorMessages";
 import {
   useCreateGoodsReceiptMutation,
   useCreatePurchaseOrderMutation,
+  useProcurementQuery,
 } from "../queries/procurementQueries";
 import { SourceFileActions } from "../../documents/components/SourceFileActions";
 import { VendorResolutionBanner } from "../../vendors/components/VendorResolutionBanner";
@@ -230,68 +231,54 @@ export function ProcurementWorkspacePage({
     setFiltersExpanded(false);
   }, [kind]);
 
-  useEffect(() => {
-    let live = true;
-    setLoading(true);
-    setError("");
-    const params = new URLSearchParams({
-      page: String(page),
-      page_size: String(pageSize),
-      sort_by: sortBy,
-      sort_dir: sortDir,
-    });
-    if (search.trim()) params.set("search", search.trim());
-    if (vendorFilter) params.set("vendor_id", vendorFilter);
-    if (dateFrom) params.set("date_from", dateFrom);
-    if (dateTo) params.set("date_to", dateTo);
-    if (kind === "purchase_order") params.set("current_only", "false");
-    else if (poFilter) params.set("po_id", poFilter);
+  const {
+    data: procurementData,
+    isLoading: procurementLoading,
+    error: procurementQueryError,
+  } = useProcurementQuery({
+    kind,
+    page,
+    pageSize,
+    search,
+    vendorFilter,
+    poFilter,
+    dateFrom,
+    dateTo,
+    sortBy,
+    sortDir,
+    authHeaders,
+  });
 
-    axios
-      .get(`${coreUrl}/api/${kind === "purchase_order" ? "purchase-orders" : "goods-receipts"}?${params}`, {
-        headers: authHeaders(),
-      })
-      .then(response => {
-        if (!live) return;
-        const data = response.data;
-        const items = Array.isArray(data) ? data : data.items || [];
-        setRows(items);
-        setTotal(Number(data.total ?? response.headers["x-total-count"] ?? items.length));
-      })
-      .catch(loadError => {
-        if (live) {
-          setRows([]);
-          setTotal(0);
-          setError(userFacingErrorMessage(loadError));
-        }
-      })
-      .finally(() => {
-        if (live) setLoading(false);
-      });
-
-    return () => {
-      live = false;
-    };
-  }, [kind, coreUrl, authHeaders, page, search, poFilter, vendorFilter, dateFrom, dateTo, sortBy, sortDir, refreshKey]);
+  const { data: poOptionsData } = useProcurementQuery({
+    kind: "purchase_order",
+    page: 1,
+    pageSize: 100,
+    authHeaders,
+    enabled: kind === "goods_receipt",
+  });
 
   useEffect(() => {
-    if (kind !== "goods_receipt") return;
-    let live = true;
-    axios
-      .get(`${coreUrl}/api/purchase-orders?page=1&page_size=100&current_only=false`, {
-        headers: authHeaders(),
-      })
-      .then(response => {
-        if (live) setPoOptions(response.data.items || []);
-      })
-      .catch(loadError => {
-        if (live) setError(userFacingErrorMessage(loadError));
-      });
+    if (procurementData) {
+      setRows(procurementData.items || []);
+      setTotal(procurementData.total ?? (procurementData.items || []).length);
+    }
+  }, [procurementData]);
 
-    return () => {
-      live = false;
-    };
-  }, [kind, coreUrl, authHeaders]);
+  useEffect(() => {
+    if (poOptionsData) {
+      setPoOptions(poOptionsData.items || []);
+    }
+  }, [poOptionsData]);
+
+  useEffect(() => {
+    setLoading(procurementLoading);
+  }, [procurementLoading]);
+
+  useEffect(() => {
+    if (procurementQueryError) {
+      setError(userFacingErrorMessage(procurementQueryError));
+    }
+  }, [procurementQueryError]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
