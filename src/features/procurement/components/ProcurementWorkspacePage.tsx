@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { ArrowLeft, ArrowRight, ChevronDown, ClipboardList, Filter, PackageCheck, RefreshCw, Search, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ClipboardList, Filter, PackageCheck, Plus, RefreshCw, Search, X } from "lucide-react";
 import { Button, Card, EmptyState } from "../../../components/ui";
 import { userFacingErrorMessage } from "../../../utils/errorMessages";
 import { SourceFileActions } from "../../documents/components/SourceFileActions";
@@ -26,7 +26,7 @@ type PO = {
   vendor_id?: string | null;
   source_document_id?: string | null;
   po_date?: string | null;
-  currency?: string;
+  currency?: string | null;
   subtotal?: string | number | null;
   tax_amount?: string | number | null;
   total_amount?: string | number | null;
@@ -75,14 +75,32 @@ type Props = {
 };
 
 const icons = { size: 16, strokeWidth: 1.75 } as const;
-const dateLabel = (value?: string | null) =>
-  value
-    ? new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value))
-    : "—";
-const amount = (value?: string | number | null, currency = "INR") =>
-  value == null || !Number.isFinite(Number(value))
-    ? "—"
-    : new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(value));
+const dateLabel = (value?: string | null) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+};
+
+const amount = (value?: string | number | null, currency?: string | null) => {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  const code = typeof currency === "string" && currency.trim() ? currency.trim().toUpperCase() : "INR";
+  const validCode = /^[A-Za-z]{3}$/.test(code) ? code : "INR";
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: validCode,
+      maximumFractionDigits: 2,
+    }).format(Number(value));
+  } catch {
+    const formatted = Number(value).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return `${validCode} ${formatted}`;
+  }
+};
 
 export function ProcurementWorkspacePage({
   kind,
@@ -122,6 +140,75 @@ export function ProcurementWorkspacePage({
   const [selectedPO, setSelectedPO] = useState<PO | null>(null);
   const [linkedInvoiceRows, setLinkedInvoiceRows] = useState<Invoice[]>([]);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [showAddGrn, setShowAddGrn] = useState(false);
+  const [grnNumber, setGrnNumber] = useState("");
+  const [grnPoId, setGrnPoId] = useState("");
+  const [grnVendorId, setGrnVendorId] = useState("");
+  const [grnDate, setGrnDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [grnLines, setGrnLines] = useState<Array<{
+    item_code: string;
+    description: string;
+    received_qty: string;
+    accepted_qty: string;
+    rejected_qty: string;
+    po_line_id?: string;
+  }>>([{ item_code: "", description: "", received_qty: "1", accepted_qty: "1", rejected_qty: "0" }]);
+  const [addGrnBusy, setAddGrnBusy] = useState(false);
+  const [addGrnError, setAddGrnError] = useState("");
+
+  async function handleCreateGrn() {
+    if (!grnNumber.trim()) {
+      setAddGrnError("GRN number is required.");
+      return;
+    }
+    if (grnLines.length === 0) {
+      setAddGrnError("At least one line item is required.");
+      return;
+    }
+    for (const line of grnLines) {
+      const rec = Number(line.received_qty);
+      const acc = Number(line.accepted_qty);
+      const rej = Number(line.rejected_qty || 0);
+      if (!Number.isFinite(rec) || rec <= 0) {
+        setAddGrnError("Received quantity must be greater than 0.");
+        return;
+      }
+      if (acc + rej !== rec) {
+        setAddGrnError("Accepted + Rejected quantity must equal Received quantity.");
+        return;
+      }
+    }
+    setAddGrnBusy(true);
+    setAddGrnError("");
+    try {
+      const payload = {
+        gr_number: grnNumber.trim(),
+        po_id: grnPoId || undefined,
+        vendor_id: grnVendorId || undefined,
+        receipt_date: grnDate || undefined,
+        lines: grnLines.map(l => ({
+          item_code: l.item_code.trim() || undefined,
+          description: l.description.trim() || undefined,
+          received_qty: Number(l.received_qty),
+          accepted_qty: Number(l.accepted_qty),
+          rejected_qty: Number(l.rejected_qty || 0),
+          po_line_id: l.po_line_id || undefined,
+        })),
+      };
+      const res = await axios.post<GR>(`${coreUrl}/api/goods-receipts`, payload, {
+        headers: authHeaders(),
+      });
+      setShowAddGrn(false);
+      setRefreshKey(k => k + 1);
+      if (res.data) {
+        void open(res.data);
+      }
+    } catch (err) {
+      setAddGrnError(userFacingErrorMessage(err, "Failed to create goods receipt note."));
+    } finally {
+      setAddGrnBusy(false);
+    }
+  }
   const activeFilterCount = (vendorFilter ? 1 : 0) + (poFilter ? 1 : 0) + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
 
   const title = kind === "purchase_order" ? "Purchase Orders" : "Goods Receipts";
@@ -253,9 +340,39 @@ export function ProcurementWorkspacePage({
 
   useEffect(() => {
     if (!openRecordId) return;
-    const row = rows.find(item => item.id === openRecordId);
-    if (row) void open(row);
-    onRecordOpened?.();
+    const match = rows.find(
+      item =>
+        item.id === openRecordId ||
+        (item as any).source_document_id === openRecordId ||
+        (kind === "purchase_order" && (item as PO).po_number?.toLowerCase() === openRecordId.toLowerCase()) ||
+        (kind === "goods_receipt" && (item as GR).gr_number?.toLowerCase() === openRecordId.toLowerCase())
+    );
+    if (match) {
+      void open(match);
+      onRecordOpened?.();
+    } else {
+      const endpoint = kind === "purchase_order" ? "purchase-orders" : "goods-receipts";
+      axios
+        .get<RecordRow>(`${coreUrl}/api/${endpoint}/${openRecordId}`, { headers: authHeaders() })
+        .then(res => {
+          if (res.data) void open(res.data);
+        })
+        .catch(() => {
+          axios
+            .get<RecordRow[] | { items: RecordRow[] }>(
+              `${coreUrl}/api/${endpoint}?source_document_id=${openRecordId}`,
+              { headers: authHeaders() }
+            )
+            .then(res => {
+              const list = Array.isArray(res.data) ? res.data : (res.data as any).items || [];
+              if (list.length > 0) void open(list[0]);
+            })
+            .catch(() => undefined);
+        })
+        .finally(() => {
+          onRecordOpened?.();
+        });
+    }
   }, [openRecordId, rows.length]);
 
   const vendorOptions = useMemo(
@@ -279,9 +396,29 @@ export function ProcurementWorkspacePage({
           </span>
           <h1>{title}</h1>
         </div>
-        <Button variant="secondary" onClick={() => setRefreshKey(value => value + 1)} disabled={loading}>
-          <RefreshCw {...icons} /> Refresh
-        </Button>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          {kind === "goods_receipt" && (
+            <Button
+              variant="primary"
+              onClick={() => {
+                setGrnNumber(`GRN-${Date.now().toString().slice(-6)}`);
+                setGrnPoId("");
+                setGrnVendorId("");
+                setGrnDate(new Date().toISOString().slice(0, 10));
+                setGrnLines([
+                  { item_code: "", description: "", received_qty: "1", accepted_qty: "1", rejected_qty: "0" },
+                ]);
+                setAddGrnError("");
+                setShowAddGrn(true);
+              }}
+            >
+              <Plus size={15} /> Add GRN
+            </Button>
+          )}
+          <Button variant="secondary" onClick={() => setRefreshKey(value => value + 1)} disabled={loading}>
+            <RefreshCw {...icons} /> Refresh
+          </Button>
+        </div>
       </header>
 
       <Card className="panel invoice-workspace">
@@ -742,6 +879,9 @@ export function ProcurementWorkspacePage({
           </section>
         </div>
       )}
+
+
+
     </div>
   );
 }

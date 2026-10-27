@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import axios from "axios";
 import {
   Building2,
@@ -16,6 +16,11 @@ import {
   X,
 } from "lucide-react";
 import { userFacingErrorMessage } from "../../../utils/errorMessages";
+import {
+  useVendorsQuery,
+  useCreateVendorMutation,
+  useUpdateVendorMutation,
+} from "../queries/vendorQueries";
 
 type Vendor = {
   id: string;
@@ -63,12 +68,41 @@ export function VendorsPage({
   isAdmin: boolean;
   canCreateVendor: boolean;
 }) {
-  const [rows, setRows] = useState<Vendor[]>([]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [refresh, setRefresh] = useState(0);
+  const [localError, setLocalError] = useState("");
+  const pageSize = 20;
+
+  const {
+    data: rows = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useVendorsQuery({
+    coreUrl,
+    authHeaders,
+    page,
+    pageSize,
+    search,
+  });
+
+  const createVendorMutation = useCreateVendorMutation({
+    coreUrl,
+    authHeaders,
+  });
+
+  const updateVendorMutation = useUpdateVendorMutation({
+    coreUrl,
+    authHeaders,
+  });
+
+  const error = queryError
+    ? userFacingErrorMessage(
+        queryError,
+        "The vendor request could not be completed. Try again.",
+        { conflict: "vendor" }
+      )
+    : localError;
 
   const [draft, setDraft] = useState<Draft>(empty);
   const [editing, setEditing] = useState<Vendor | null>(null);
@@ -86,37 +120,6 @@ export function VendorsPage({
   const [aliasText, setAliasText] = useState("");
   const [aliasEditing, setAliasEditing] = useState<Alias | null>(null);
   const [formError, setFormError] = useState("");
-
-  const pageSize = 20;
-
-  useEffect(() => {
-    let live = true;
-    setLoading(true);
-    const params = new URLSearchParams({
-      page: String(page),
-      page_size: String(pageSize),
-    });
-    if (search.trim()) params.set("search", search.trim());
-    axios
-      .get<Vendor[]>(`${coreUrl}/api/vendors?${params}`, { headers: authHeaders() })
-      .then(res => {
-        if (live) setRows(res.data);
-      })
-      .catch(err => {
-        if (live)
-          setError(
-            userFacingErrorMessage(err, "The vendor request could not be completed. Try again.", {
-              conflict: "vendor",
-            })
-          );
-      })
-      .finally(() => {
-        if (live) setLoading(false);
-      });
-    return () => {
-      live = false;
-    };
-  }, [coreUrl, authHeaders, page, search, refresh]);
 
   const viewVendorDetails = async (vendor: Vendor) => {
     setSelectedVendor(vendor);
@@ -170,17 +173,18 @@ export function VendorsPage({
         contact_phone: draft.contact_phone.trim() || null,
       };
       if (editing) {
-        await axios.patch(`${coreUrl}/api/vendors/${editing.id}`, payload, {
-          headers: authHeaders(),
+        await updateVendorMutation.mutateAsync({
+          vendorId: editing.id,
+          payload,
         });
         if (selectedVendor && selectedVendor.id === editing.id) {
           setSelectedVendor({ ...selectedVendor, ...payload });
         }
       } else {
-        await axios.post(`${coreUrl}/api/vendors`, payload, { headers: authHeaders() });
+        await createVendorMutation.mutateAsync(payload);
       }
       setFormOpen(false);
-      setRefresh(value => value + 1);
+      void refetch();
     } catch (err) {
       setFormError(
         userFacingErrorMessage(
@@ -202,9 +206,9 @@ export function VendorsPage({
       if (selectedVendor && selectedVendor.id === vendor.id) {
         setSelectedVendor(null);
       }
-      setRefresh(value => value + 1);
+      void refetch();
     } catch (err) {
-      setError(
+      setLocalError(
         userFacingErrorMessage(err, "The vendor request could not be completed. Try again.", {
           conflict: "vendor",
         })
@@ -223,7 +227,7 @@ export function VendorsPage({
       });
       setAliases(res.data);
     } catch (err) {
-      setError(
+      setLocalError(
         userFacingErrorMessage(err, "The vendor request could not be completed. Try again.", {
           conflict: "vendor",
         })
@@ -265,7 +269,7 @@ export function VendorsPage({
         void viewVendorDetails(selectedVendor);
       }
     } catch (err) {
-      setError(
+      setLocalError(
         userFacingErrorMessage(err, "The vendor request could not be completed. Try again.", {
           conflict: "vendor",
         })

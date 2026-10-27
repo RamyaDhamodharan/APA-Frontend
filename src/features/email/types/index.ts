@@ -4,6 +4,25 @@ export type NoMatchDraft = {
   kind: string;
 };
 
+export type EmailDraftItem = {
+  id: string;
+  kind?: string;
+  invoice_id?: string | null;
+  issue_id?: string | null;
+  document_id?: string | null;
+  to_addresses: string[];
+  cc_addresses?: string[];
+  subject: string;
+  body: string;
+  status: "draft" | "sent" | "failed" | "discarded" | string;
+  blocked_by_allowlist?: boolean;
+  last_error?: string | null;
+  attempts?: number;
+  created_at: string;
+  updated_at?: string | null;
+  sent_at?: string | null;
+};
+
 export type EmailDraftDetail = NoMatchDraft & {
   subject: string;
   body: string;
@@ -31,9 +50,11 @@ export type EmailStatus = {
   next_poll_at?: string | null;
   docling_models_available: boolean;
   counts?: {
+    total?: number;
     processed?: number;
     failed?: number;
     needs_attention?: number;
+    skipped?: number;
     skipped_by_reason?: Record<string, number>;
   };
   last_result?: Record<string, number | Record<string, number> | string>;
