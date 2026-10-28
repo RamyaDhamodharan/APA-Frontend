@@ -87,6 +87,36 @@ export function InvoiceReviewDrawer({
     isAll?: boolean;
   } | null>(null);
   const [customReasonText, setCustomReasonText] = useState("");
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
+  const [isEditingVerification, setIsEditingVerification] = useState(false);
+  const [editValues, setEditValues] = useState<Record<string, any>>({});
+  const [verifyReasonText, setVerifyReasonText] = useState("");
+
+  const handleVerifyInvoice = async (valuesToVerify: Record<string, any>, reason: string) => {
+    if (!invoice.invoice_id) return;
+    setVerifyBusy(true);
+    setVerifyError("");
+    try {
+      await axios.post(
+        `${CORE_URL}/api/invoices/${invoice.invoice_id}/verify`,
+        { values: valuesToVerify, reason: reason || "Associate verified invoice fields" },
+        { headers: _authHeaders ? _authHeaders() : undefined }
+      );
+      setIsEditingVerification(false);
+      setActiveTab("matching");
+      if (onRefreshInvoice) await onRefreshInvoice();
+    } catch (err: unknown) {
+      const msg =
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+      setVerifyError(typeof msg === "string" ? msg : "Failed to verify invoice fields");
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
 
   const handleResolve = async (discrepancyId: string, action: string, reason?: string) => {
     if (!invoice.invoice_id) return;
@@ -198,6 +228,7 @@ export function InvoiceReviewDrawer({
     ["PO / Order Reference", ["po_number_raw"]],
     ["Payment Terms", ["payment_terms"]],
     ["Currency", ["currency"]],
+    ["GL Code", ["gl_code"]],
   ];
   const hasNoReceipt = issues.some(
     item => item.field.includes("accepted_quantity") || item.field.includes("goods_receipt")
@@ -837,7 +868,26 @@ export function InvoiceReviewDrawer({
                   const shown = ["invoice_date", "due_date"].includes(String(keys[0]))
                     ? dateLabel(String(value))
                     : String(value);
-                  return <DetailField key={label} label={label} value={shown} />;
+
+                  const rawConfidence = (invoice as any).field_confidence;
+                  const confKey =
+                    keys[0] === "vendor_name" ? "vendor" :
+                    keys[0] === "invoice_no" ? "invoice_number" :
+                    keys[0] === "po_number_raw" ? "order_number" :
+                    String(keys[0]);
+                  const fEntry = rawConfidence ? rawConfidence[confKey] : undefined;
+                  const score = typeof fEntry === "number" ? fEntry : fEntry?.confidence;
+                  const reasons = fEntry?.source_signals?.reasons;
+
+                  return (
+                    <DetailField
+                      key={label}
+                      label={label}
+                      value={shown}
+                      confidence={typeof score === "number" ? Math.round(score) : undefined}
+                      reasons={reasons}
+                    />
+                  );
                 })}
               </div>
             </section>
@@ -1010,6 +1060,29 @@ export function InvoiceReviewDrawer({
           >
             <X size={14} /> Reject
           </button>
+          <button
+            type="button"
+            className="btn-drawer-approve"
+            style={{ background: "#2563eb", color: "#fff", display: "inline-flex", alignItems: "center", gap: "6px" }}
+            onClick={() => {
+              const initial: Record<string, any> = {
+                vendor: invoice.vendor_name,
+                invoice_number: invoice.invoice_no,
+                total: invoice.total_amount,
+                subtotal: invoice.subtotal,
+                tax: invoice.tax_amount,
+                due_date: invoice.due_date,
+                order_number: invoice.po_number_raw,
+                gl_code: invoice.gl_code,
+              };
+              setEditValues(initial);
+              setIsEditingVerification(true);
+            }}
+            disabled={verifyBusy || invoice.status === "paid"}
+            title="Review low-confidence fields, edit if needed, and advance to matching"
+          >
+            <ShieldCheck size={14} /> Verify & Proceed
+          </button>
           {invoice.status === "needs_review" && (
             <button
               type="button"
@@ -1038,6 +1111,127 @@ export function InvoiceReviewDrawer({
           )}
         </div>
       </footer>
+      {/* Verification & Edit Modal */}
+      {isEditingVerification && (
+        <div className="modal-backdrop" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div className="card" style={{ background: "#fff", borderRadius: "8px", maxWidth: "560px", width: "90%", padding: "24px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #e5e7eb", paddingBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <ShieldCheck size={20} color="#2563eb" />
+                <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 600 }}>Verify Extracted Fields</h3>
+              </div>
+              <button type="button" onClick={() => setIsEditingVerification(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} /></button>
+            </div>
+
+            <p style={{ fontSize: "13px", color: "#4b5563", marginBottom: "16px" }}>
+              Confirm or correct extracted values. Any field below 85% confidence must be checked against the source document.
+            </p>
+
+            {verifyError && (
+              <div style={{ background: "#fee2e2", color: "#b91c1c", padding: "10px", borderRadius: "6px", fontSize: "13px", marginBottom: "12px" }}>
+                {verifyError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Vendor Name</label>
+                <input
+                  type="text"
+                  value={editValues.vendor ?? ""}
+                  onChange={e => setEditValues(prev => ({ ...prev, vendor: e.target.value }))}
+                  style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Invoice Number</label>
+                  <input
+                    type="text"
+                    value={editValues.invoice_number ?? ""}
+                    onChange={e => setEditValues(prev => ({ ...prev, invoice_number: e.target.value }))}
+                    style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Total Amount</label>
+                  <input
+                    type="text"
+                    value={editValues.total ?? ""}
+                    onChange={e => setEditValues(prev => ({ ...prev, total: e.target.value }))}
+                    style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Due Date (YYYY-MM-DD)</label>
+                  <input
+                    type="text"
+                    value={editValues.due_date ?? ""}
+                    onChange={e => setEditValues(prev => ({ ...prev, due_date: e.target.value }))}
+                    style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>GL Code</label>
+                  <input
+                    type="text"
+                    value={editValues.gl_code ?? ""}
+                    onChange={e => setEditValues(prev => ({ ...prev, gl_code: e.target.value }))}
+                    placeholder="e.g. 6100"
+                    style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>
+                  Reason for Verification / Edits <span style={{ color: "#b91c1c" }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Checked invoice total against original PDF scan"
+                  value={verifyReasonText}
+                  onChange={e => setVerifyReasonText(e.target.value)}
+                  style={{ width: "100%", padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px", borderTop: "1px solid #e5e7eb", paddingTop: "16px" }}>
+              <button
+                type="button"
+                onClick={() => setIsEditingVerification(false)}
+                style={{ padding: "8px 16px", borderRadius: "6px", border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontWeight: 500 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={verifyBusy || !verifyReasonText.trim()}
+                onClick={() => handleVerifyInvoice(editValues, verifyReasonText)}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "6px",
+                  background: verifyReasonText.trim() ? "#2563eb" : "#9ca3af",
+                  color: "#fff",
+                  border: "none",
+                  cursor: verifyReasonText.trim() ? "pointer" : "not-allowed",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                {verifyBusy ? "Saving..." : "Save & Advance to Matching"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

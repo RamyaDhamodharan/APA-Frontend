@@ -48,13 +48,40 @@ export function LoadingPanel({ title, subtitle }: { title: string; subtitle: str
   );
 }
 
-export function DetailField({ label, value }: { label: string; value?: unknown }) {
+export function DetailField({
+  label,
+  value,
+  confidence,
+  reasons,
+}: {
+  label: string;
+  value?: unknown;
+  confidence?: number;
+  reasons?: string[];
+}) {
   if (value == null || value === "") return null;
   if (typeof value !== "string" && typeof value !== "number") return null;
+  const isLow = typeof confidence === "number" && confidence < 85;
   return (
-    <div className="field">
-      <span>{label}</span>
+    <div className={`field ${isLow ? "field-low-confidence" : ""}`} style={isLow ? { borderLeft: "3px solid #f59e0b", paddingLeft: "8px" } : undefined}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2px" }}>
+        <span>{label}</span>
+        {typeof confidence === "number" && (
+          <span
+            className={`pill ${confidence >= 85 ? "green" : confidence >= 70 ? "amber" : "red"}`}
+            style={{ fontSize: "10px", padding: "1px 6px", fontWeight: 600 }}
+            title={reasons?.length ? reasons.join("; ") : `${confidence}% confidence`}
+          >
+            {confidence}%
+          </span>
+        )}
+      </div>
       <strong>{String(value)}</strong>
+      {isLow && reasons && reasons.length > 0 && (
+        <small style={{ color: "#b91c1c", fontSize: "11px", display: "block", marginTop: "3px" }}>
+          ⚠️ {reasons.join(", ")}
+        </small>
+      )}
     </div>
   );
 }
